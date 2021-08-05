@@ -1,0 +1,565 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: It will create the cloudfront
+Parameters:
+  EnvName:
+    Description: Please specify the target EnvName.
+    Type: String
+    Default: "dev"
+    AllowedValues:
+      - prod
+      - stg
+      - dev
+      - qa
+  Project:
+    Type: String 
+    Description: >
+      Project Name (used for tracking the resources for a project)
+
+  AppName:
+    Description: Application  name.
+    Type: String
+    Default: "sia"
+
+  Id:
+    Description: Id for the CloudFront distribution
+    Type: String
+    Default: sia-app
+
+  Description:
+    Description: Description for the CloudFront distribution
+    Type: String
+    Default: SIA app CloudFront distribution
+
+  # AlternateDomainNames:
+  #  Description: CNAMEs (alternate domain names), if any, for the distribution. Example. mydomain.com
+  #  Type: String
+  #  Default: "name.domain.com"
+  # ACMCertificateIdentifier:
+  #   Description: The ARN of the AWS Certification Manager's Certificate
+  #   Type: String
+  #   Default: 1abc-2def-3ghi-4jkl
+
+  bucketName:
+    Description: Name of the bucket with content that will be delivered by CloudFront
+    Type: String
+    Default: sia-cftest-dev-ui
+    
+
+  IPV6Enabled:
+    Description: Should CloudFront to respond to IPv6 DNS requests with an IPv6 address for your distribution.
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - true
+      - false
+
+  Compress:
+    Description: CloudFront Origin Protocol Policy to apply to your origin.
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - true
+      - false
+
+  DefaultTTL:
+    Description: The default time in seconds that objects stay in CloudFront caches before CloudFront forwards another request to your custom origin. By default, AWS CloudFormation specifies 86400 seconds (one day).
+    Type: String
+    Default: "0"
+
+  MaxTTL:
+    Description: The maximum time in seconds that objects stay in CloudFront caches before CloudFront forwards another request to your custom origin. By default, AWS CloudFormation specifies 31536000 seconds (one year).
+    Type: String
+    Default: "0"
+
+  MinTTL:
+    Description: The minimum amount of time that you want objects to stay in the cache before CloudFront queries your origin to see whether the object has been updated.
+    Type: String
+    Default: "0"
+
+  SmoothStreaming:
+    Description: Indicates whether to use the origin that is associated with this cache behavior to distribute media files in the Microsoft Smooth Streaming format.
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - true
+      - false
+
+  QueryString:
+    Description: CIndicates whether you want CloudFront to forward query strings to the origin that is associated with this cache behavior.
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - true
+      - false
+
+  ForwardCookies:
+    Description: Forwards specified cookies to the origin of the cache behavior.
+    Type: String
+    Default: "all"
+    AllowedValues:
+      - all
+      - whitelist
+      - none
+
+  ViewerProtocolPolicy:
+    Description: The protocol that users can use to access the files in the origin that you specified in the TargetOriginId property when the default cache behavior is applied to a request.
+    Type: String
+    Default: "redirect-to-https"
+    AllowedValues:
+      - redirect-to-https
+      - allow-all
+      - https-only
+
+  PriceClass:
+    Description: The price class that corresponds with the maximum price that you want to pay for CloudFront service. If you specify PriceClass_All, CloudFront responds to requests for your objects from all CloudFront edge locations.
+    Type: String
+    Default: "PriceClass_All"
+    AllowedValues:
+      - PriceClass_All
+      - PriceClass_100
+      - PriceClass_200
+
+  SslSupportMethod:
+    Description: Specifies how CloudFront serves HTTPS requests.
+    Type: String
+    Default: "sni-only"
+    AllowedValues:
+      - sni-only
+      - vip
+
+  MinimumProtocolVersion:
+    Description: The minimum version of the SSL protocol that you want CloudFront to use for HTTPS connections.
+    Type: String
+    Default:  "TLSv1"
+    AllowedValues:
+      - TLSv1
+      - TLSv1.2_2018
+      - TLSv1.1_2016
+      - TLSv1_2016
+      - SSLv3
+
+
+  LoggingBucketVersioning:
+    Description: The versioning state of an Amazon S3 bucket. If you enable versioning, you must suspend versioning to disable it.
+    Type: String
+    Default: "Suspended"
+    AllowedValues:
+      - Enabled
+      - Suspended
+Resources:
+
+# IAM ROLE USED FOR LOGGING KMS KEY ACCESS
+  AdministratorAccessIAMRole:
+    Type: 'AWS::IAM::Role'
+    Description: "Administrator Access IAM Role"
+    Properties:
+      RoleName: !Sub "AdministratorAccess-${AppName}"
+      ManagedPolicyArns:
+        - !Sub "arn:aws:iam::aws:policy/AdministratorAccess"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: '/'
+
+
+# KMS KEY USED FOR LOGGING S3 BUCKET
+  LoggingBucketKMSKey:
+    Type: 'AWS::KMS::Key'
+    DependsOn: AdministratorAccessIAMRole
+    Properties:
+      Description: 'Logging S3 Bucket KMS Key'
+      Enabled: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM policies to allow access to the Key
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action:
+              - 'kms:*'
+            Resource: '*'
+          - Sid: Allow administration of the key
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AdministratorAccess-${AppName}'
+            Action:
+              - 'kms:Put*'
+              - 'kms:ScheduleKeyDeletion'
+              - 'kms:CancelKeyDeletion'
+              - 'kms:Describe*'
+              - 'kms:Revoke*'
+              - 'kms:Disable*'
+              - 'kms:Enable*'
+              - 'kms:Delete*'
+              - 'kms:List*'
+              - 'kms:Update*'
+              - 'kms:Create*'
+            Resource: '*'
+
+# KMS KEY ALIAS USED FOR LOGGING BUCKET
+  LoggingBucketKMSKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: !Sub 'alias/${AppName}/${EnvName}/s3-logging-kms'
+      TargetKeyId: !Sub '${LoggingBucketKMSKey}'
+
+# LOGGING S3 BUCKET
+  LoggingBucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: 'Retain'
+    DependsOn: LoggingBucketKMSKey
+    Properties:
+      BucketName: !Sub '${AppName}-logging-${EnvName}-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !GetAtt 'LoggingBucketKMSKey.Arn'
+              SSEAlgorithm: 'aws:kms'
+      VersioningConfiguration:
+        Status: !Ref 'LoggingBucketVersioning'
+
+# LOGGING S3 BUCKET POLICY
+  LoggingBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref 'LoggingBucket'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LoggingBucketPermissions
+            Effect: 'Allow'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 's3:PutObject'
+            Resource:
+              - !Sub 'arn:aws:s3:::${LoggingBucket}/AWSLogs/${AWS::AccountId}/*'
+
+
+############ S3 Bucket Creation ########
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName: !Ref bucketName
+      Tags:
+        - Key: description
+          Value: "Private files"
+
+############ S3 ACCESS ###############
+  CloudFrontOriginAccessIdentity: #Creating OAI to serve content of private bucket
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties: 
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: origin-access-identity
+
+  BucketPolicy: #Adding bucket policy to allow reads from cloudfront
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref bucketName
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - s3:GetObject
+            Effect: Allow
+            Resource: !Join [ "", [ "arn:aws:s3:::", !Ref bucketName, "/*" ] ]
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+# IAM ROLE USED FOR LAMBDA EDGE
+  LambdaEdgeIAMRole:
+    Type: 'AWS::IAM::Role'
+    Description: "Lambda Edge IAM Role"
+    Properties:
+      RoleName: !Sub "${AppName}-iam-lambda-edge-role-${EnvName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowLambdaServiceToAssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - edgelambda.amazonaws.com
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Path: /
+      Policies:
+        - PolicyName: PublishNewLambdaEdgeVersion
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - lambda:PublishVersion
+              Resource: '*'
+# LAMBDA@EDGE FUNCTION
+  LambdaSignedCookies:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: !Sub 'A custom Lambda@Edge function for serving custom headers from CloudFront Distribution'
+      FunctionName: !Sub '${AppName}-lambda-edge-${EnvName}'
+      Handler: index.handler
+      Role: !GetAtt 'LambdaEdgeIAMRole.Arn'
+      MemorySize: 128
+      Timeout: 5
+      Code:
+        ZipFile: |
+          'use strict';
+
+          function parseCookies(headers) {
+              const parsedCookie = {};
+              if (headers.cookie) {
+                  headers.cookie[0].value.split(';').forEach((cookie) => {
+                      if (cookie) {
+                          const parts = cookie.split('=');
+                          parsedCookie[parts[0].trim()] = parts[1].trim();
+                      }
+                  });
+              }
+              return parsedCookie;
+          }
+          exports.handler = (event, context, callback) => {
+              const request = event.Records[0].cf.request;
+              const headers = request.headers;
+
+                  /* Check for session-id in request cookie in viewer-request event,if session-id is absent, redirect the user to sign in page with original 
+                  request sent as redirect_url in query params. */
+
+                  /* Check for session-id in cookie, if present then proceed with request */
+              const parsedCookies = parseCookies(headers);
+              if (parsedCookies && parsedCookies['CloudFront-Key-Pair-Id']) {
+                  callback(null, request);
+                  return;
+              }
+
+              /* URI encode the original request to be sent as redirect_url in query params */
+              //const encodedRedirectUrl = encodeURIComponent(`https://${headers.host[0].value}${request.uri}?${request.querystring}`);
+              const response = {
+                  status: '302',
+                  statusDescription: 'Found',
+                  headers: {
+                      location: [{
+                          key: 'Location',
+                          value: '/sign'
+                      }],
+                  },
+              };
+              callback(null, response);
+          };
+      Runtime: nodejs12.x
+
+# LAMBDA VERSION FUNCTION
+  LambdaSignedCookiesLoginPath:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Description: !Sub 'A custom Lambda@Edge Version function'
+      FunctionName: !Sub '${AppName}-lambda-edge-version-${EnvName}'
+      Handler: index.handler
+      Role: !GetAtt 'LambdaEdgeIAMRole.Arn'
+      MemorySize: 128
+      Timeout: 30
+      Code:
+        ZipFile: |
+          // Load the AWS SDK for Node.js
+          var AWS = require('aws-sdk');
+
+          exports.handler = async (event,context) => {
+          
+          let keyPairId ='APKAIVP37E7HL2UHQDEQ';
+          var privateKey =`-----BEGIN RSA PRIVATE KEY-----
+          MIIEpQIBAAKCAQEA5DZLGioH34nMLycAsdcIF4rXUqOxQX0xVaerEKDo3bxAItre
+          k9nem1LqJUtuDYwjPItAB6u1RT9LbwLoSx8UTSX4Pzm/HZIHTp4vcj/iUEn0ZZ51
+          umzOVuFHqVvbn2wqKtSFX2NkFwuh2L59X2D4zzHu0rqhGFsFsH1C/uiBct+D2mZE
+          op3LsdiV3PT7hbq4iT9fmexzBPXFX/pbmClK2KWmpTvI3AQu++FYyJalq5gFbqWI
+          qWSl2BledGbrgt2LhLaXTrj9APWOt2xx6tV48Fr+zp05jC5B+b4TYVBfRjfz/RLO
+          yrvOGwY5edCW5qYQylXzYd+I1Qsx26MlO+CIgQIDAQABAoIBAQC4c5GcIiCe8pdP
+          /Sw4kV5++L80kg2wqul3G7/N/uB4Z7FG+rQvuEaOMCQD5MWcuYm5Y6trB8PJpnDn
+          1ue93+7etDPDln77/Y1eY8hhhXT8A+o/QCZTeaIE4qyzHAWVAy3J1F/AS2sYnVRB
+          BSX8Mzqm7Ork8+dE8jzU+0ltEqueFbeVeBFAbMNjN94STyfleWI5HNSvtnQOGu8L
+          G1D7TlSIs+MueudPhpS5WumNHQYPs4cpUjbwyq9M6tV0quHeGA3GEa2lt6GOvUYr
+          U3vXAKUE2wCgPveeU4ueHhQoR3fBOFP72GRvyimx8ueaQJPkqb0nhW9FXCrKJC7m
+          v0t8RyApAoGBAPPaY/7cEbFY5N3Sz+If4O8C0+iTUK9QRckekaDrhuE2qfmVtn6i
+          Y7uCGJfLGH7nC3axAK2bWh+cuNyr1ZFqhwd55p8KhlmJpiKCg5sqDnYNt9SXB1R7
+          5GZ5zreQFQ+3LdUE6+Ldf2aBN2UzHgUjDQsFXdMJ3mngaaE3Zo+0IrlXAoGBAO+U
+          cvGhybk+k9jG6bsG8ft3U4iEtB+gFbGMR24PUP96NzzPMav0VTOEYTV7nqH3FYc0
+          /cBQcoJUMEXHwRRNjIAMtaQyHdJh3gwsbytRM8CArv0esquwyMeqxA3oqdviW9cE
+          E+++a93SwZbTJDXHIKeUTIFgGO/VRTjcig4EYS3nAoGBALGQ84Of6FpFqtJEMhAs
+          unQQkRIoQ3aFc2uSEOUm3F6emYMem3b29LyTbSkLQNkXkOdq2F2SZDvkuVAm6Cst
+          cQnmoCJrXY1RiGJUu1R/eWxJbPUmzLWeSaC9TeOozU1WS89z9/iI5b5UlWvhnxiK
+          f3LpA3srEoPyX7h/SPWXbDmdAoGAMV2lUaTErCb4z/Istxz3P5mW3Mp7Uwjpb2w4
+          S7VcO0gzmZQX6Bawd60PWrXeOgFvrix9HON2tOQkDjzazBQunzP/OZYaDv+bgWam
+          gYZ543Cgngd1SWtj88B8JWGLnoNF6Ugt03ipQUvsF+fpzir5z43/NalXehO377+B
+          suG0JIECgYEAtXq5x+1QxY0Yiv6UGUA5KoYezeTi6qJWu5e3VpZC1FcJ+MNx/TvA
+          eaD9s49E6azw0QVeWz/J8lM3x3fQU8F0rIt6jdfaVmJXOhSN+9sJ8CumZfhJZfYn
+          J4nEt7e1AzMSZOrK1dAan86RbrbR7YVNU23mothbEROLhzjfQxtcd+o=
+          -----END RSA PRIVATE KEY-----`;
+              const request = event.Records[0].cf.request;
+              const headers = request.headers;
+              const cf = new AWS.CloudFront.Signer(keyPairId, privateKey);
+              const policy = generateCustomPolicy(headers['host'][0]['value'], new Date().getTime() + 1800000);
+              const options = {policy: JSON.stringify(policy)};
+              console.log(JSON.stringify(options));
+              const signedCookies = await cf.getSignedCookie(options);
+              let setCookies = [];
+              for(var key in signedCookies){
+                  setCookies.push({
+                      key: 'Set-Cookie',
+                      value: `${key}=${signedCookies[key]}`
+                  });
+              }
+
+              const response = {
+                  status: '302',
+                  statusDescription: 'Found',
+                  headers: {
+                      location: [{
+                          key: 'Location',
+                          value: '/home',
+                      }],
+                      'set-cookie': setCookies
+                  },
+              };
+              //Return modified response
+              return response;
+          };
+          function generateCustomPolicy(host, expire) {
+            return {
+              'Statement': [{
+                 'Resource': `https://${host}/*`,
+                   'Condition':{
+                      "DateLessThan":{"AWS:EpochTime":expire}
+                   }
+              }]
+            }
+          }
+      Runtime: nodejs12.x
+
+# CLOUDFRONT DISTRIBUTION
+  CloudFrontDistribution:
+    Type: 'AWS::CloudFront::Distribution'
+    DependsOn:
+    - LoggingBucket
+    Properties:
+      DistributionConfig:
+        Comment: 'Cloudfront Distribution Of SIA app'
+        Origins:
+          - DomainName: !Join
+              - ''
+              - - !Ref bucketName
+                - .s3.amazonaws.com
+            Id: !Ref bucketName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity} 
+        Enabled: 'true'
+        DefaultRootObject: index.html
+        HttpVersion: 'http2'
+        # Aliases:
+        #   - !Ref 'AlternateDomainNames'
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - DELETE
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          Compress: !Ref 'Compress'
+          DefaultTTL: !Ref 'DefaultTTL'
+          MaxTTL: !Ref 'MaxTTL'
+          MinTTL: !Ref 'MinTTL'
+          SmoothStreaming: 'false'
+          TargetOriginId: !Ref bucketName
+          ForwardedValues:
+            QueryString: !Ref 'QueryString'
+            Cookies:
+              Forward: !Ref 'ForwardCookies'
+          ViewerProtocolPolicy: !Ref 'ViewerProtocolPolicy'
+
+        PriceClass: !Ref 'PriceClass'
+        ViewerCertificate:
+          # ACMCertificateIdentifier: !Sub 'arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/${ACMCertificateIdentifier}'
+          # SslSupportMethod:  !Ref 'SslSupportMethod'
+          # MinimumProtocolVersion: !Ref 'MinimumProtocolVersion'
+          CloudFrontDefaultCertificate: 'true'
+        IPV6Enabled: !Ref 'IPV6Enabled'
+
+      Tags:
+        - Key: Name
+          Value: !Ref Id
+        - Key: Description
+          Value: !Ref Description
+        - Key: EnvironmentCode
+          Value: !Ref EnvName
+
+Outputs:  
+
+  # AdministratorAccessIAMRole:
+  #   Description: "Administrator Access IAM Role"
+  #   Value: !Ref 'AdministratorAccessIAMRole'
+  #   Export:
+  #     Name: !Sub '${AppName}-iam-${EnvName}-administrator-access-role'
+
+  # LoggingBucket:
+  #   Description: "Name of S3 Logging bucket"
+  #   Value: !Ref 'LoggingBucket'
+  #   Export:
+  #     Name: !Sub '${AppName}-logging-${EnvName}-${AWS::AccountId}-${AWS::Region}'
+
+  # LoggingBucketKMSKey:
+  #   Description:  "Logging Bucket KMS Key"
+  #   Value: !Ref 'LoggingBucketKMSKey'
+  #   Export:
+  #     Name: !Sub '${AppName}-${EnvName}-s3-logging-kms'
+
+  # DistributionId:
+  #   Description: "CloudFront Distribution ID"
+  #   Value: !GetAtt CloudFrontDistribution
+  
+  # # DistributionName:
+  # #   Description: " URL to access CloudFront Distribution"
+  # #   Value: 
+  # DistributionName:
+  #   Description : "URL to access the CloudFront distribution"
+  #   #Value: { "Fn::Join" : [ "", ["http://", {"Fn::GetAtt" : [!Ref CloudFrontDistribution, "DomainName"]} ]]}
+  #   # Value: 
+  #   #   Fn::Join:
+  #   #     - ""
+  #   #     -
+  #   #       - "http://"
+  #   #       -
+  #   #         Fn:GetAtt:
+  #   #           - CloudFrontDistribution
+  #   #           - DomainName
+  #   Value: !GetAtt CloudFrontDistribution.DomainName
+
+  DistributionName:
+    Value:
+      Fn::Join:
+        - ""
+        - - "https://"
+          - Fn::GetAtt:
+              - CloudFrontDistribution
+              - DomainName
+    # DNSName:
+    #     Fn::Join:
+    #       - ""
+    #       - - "https://"
+    #         - Ref: ApiGatewayRestApi
+    #         - ".execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}"
+
+  # # AlternateDomainNames:
+  # #  Description: "Alternate Domain Names (CNAME)"
+  # #  Value: !Ref 'AlternateDomainNames'
