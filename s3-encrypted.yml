@@ -1,0 +1,113 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates an S3 bucket and IAM profile to access S3
+
+ 
+
+Parameters:
+  UAI:
+    Type: String
+    Description: The UAI of the application being managed. UAI starting sequence. MUST be in lowercase.
+    ConstraintDescription: The UAI must be valid, but specified as uai in lower case followed by 7 digits
+    AllowedPattern: ^uai[0-9]*$
+    MinLength: !!int 10
+    MaxLength: !!int 10
+  AppName:
+    Type: String
+    Description: 'Which instance of the application. Example: app1. Must be lowercase. Max 30 chars.'
+    AllowedPattern: ^[a-z][a-z0-9\._\-]*[a-z0-9]$
+    ConstraintDescription: Must contain only lower case letters, digits or -. Min 3 chars. Max 30. Must start with a letter and end with a letter or digit
+    MinLength: !!int 3
+    MaxLength: !!int 15
+  AWSAccountName:
+    Type: String
+    Description: 'The Aws Account Name'
+  KMSKey:
+    Type: String
+    Description: "ID of the KMS key to be used to encrypt the bucket"
+  KMSArn:
+    Type: String
+    Description: "ARN of the KMS Key"
+  Env:
+    Type: String
+    Description: "Env of the app"
+    
+Resources:
+
+ 
+
+  S3EncryptedBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: ${UAI}-${AppName}-${Env}-${AWSAccountName}
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: "aws:kms"
+            KMSMasterKeyID: !Ref KMSKey
+      LoggingConfiguration:
+        DestinationBucketName: !ImportValue AWSCommonLogBucketName
+        LogFilePrefix: !Join
+                        - '/'
+                        - - 's3'
+                          - !ImportValue VPCAlias
+                          - !Sub ${UAI}-${AppName}-${Env}-${AWSAccountName}
+      Tags:
+      - Key: uai
+        Value:
+          Ref: UAI
+      - Key: confidential
+        Value: "yes"
+      - Key: Name
+        Value:
+          Fn::Sub: ${UAI}-${AppName}-${Env}-${AWSAccountName}
+      - Key: appname
+        Value:
+          Ref: AppName
+      - Key: KmsKeyId
+        Value: !Ref KMSKey
+      - Key: env
+        Value: !Ref Env
+
+ 
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3EncryptedBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: PutObjectPolicy
+        Statement:
+          - Sid: DenyIncorrectEncryptionHeader
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: 
+              - Fn::Sub: arn:aws:s3:::${UAI}-${AppName}-${Env}-${AWSAccountName}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: "aws:kms"
+          - Sid: RequireKMSEncryption
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: 
+              - Fn::Sub: arn:aws:s3:::${UAI}-${AppName}-${Env}-${AWSAccountName}/*
+            Condition:
+              StringNotLikeIfExists:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !Ref KMSArn
+          - Sid: RequireEncryptionInTransit
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: 
+              - Fn::Sub: arn:aws:s3:::${UAI}-${AppName}-${Env}-${AWSAccountName}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+Outputs:
+  S3EncryptedBucketARN:
+    Value: !GetAtt S3EncryptedBucket.Arn
+    Description: ARN for the S3 bucket
