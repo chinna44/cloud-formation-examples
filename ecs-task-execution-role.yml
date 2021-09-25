@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template for creating ECS Task Exe Role.
+Transform: OpsExecutionRoleBuilder
+Resources:
+  CustomEcsTaskExeRole:
+    Type: 'Custom::GP::IAM::SvcRole'
+    Properties:
+      ServiceToken: ''
+      AccountId: '930136447543'
+      Region: 'us-east-1'
+      Type: 'ecs-tasks'
+      Uai: 'uai2000422'
+      Env: 'dev'
+      AppName: 'elite'
+      AppInstance: 'exe'    
+      Permissions:
+        # Access to Ecr Base repo, Logs and Ecr repo based on uai, env, appname
+        - EcsTaskExeRole: 'arn:aws:iam'
+        - BasicReadOnly: 'arn:aws:secretsmanager'
+        - ReadWrite: 'arn:aws:s3:::-uai2000422-elite-*'
+       
+Outputs:
+  EcsTaskExeRoleArn:
+    Value: !GetAtt CustomEcsTaskExeRole.Arn
