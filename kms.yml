@@ -1,0 +1,152 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template to create app specific kms key
+
+ 
+
+Parameters:
+  UAI:
+    Type: String
+    Description: "Universal Application Identifier(lowercase). Found at https://applications.ge.com"
+
+ 
+
+  AppName:
+    Type: String
+
+ 
+
+  Env:
+    Type: String
+    Description: Env instance of the resource.
+
+ 
+
+  Service:
+    Type: String
+    Description: For which AWS server you are going to use this KMS key. RDS , EBS , S3
+
+ 
+
+Resources:
+  KMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: Key used to encrypt EC2 root volumes & RDS instance
+      Enabled: true
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${UAI}-${AppName}-${Env}-${Service}'
+        - Key: Appname
+          Value: !Ref AppName
+        - Key: uai
+          Value: !Ref UAI
+        - Key: env
+          Value: !Ref Env
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: automation-key
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+ 
+
+          - Sid: Enable Key Access for Admins
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/hq/bu-pw-cldSAAdmin-fed'
+            Action:
+              - 'kms:Create*'
+              - 'kms:Describe*'
+              - 'kms:Enable*'
+              - 'kms:List*'
+              - 'kms:Put*'
+              - 'kms:Update*'
+              - 'kms:Revoke*'
+              - 'kms:Disable*'
+              - 'kms:Get*'
+              - 'kms:Delete*'
+              - 'kms:TagResource'
+              - 'kms:UntagResource'
+              - 'kms:ScheduleKeyDeletion'
+              - 'kms:CancelKeyDeletion"'
+            Resource: '*'
+
+ 
+
+          # - Sid: Enable Grant Access
+          #   Effect: Allow
+          #   Principal:
+          #     AWS:
+          #       - !Sub "arn:aws:iam::${AWS::AccountId}:role/inf/ops-jenkins-execution"
+          #   Action:
+          #     - 'kms:CreateGrant'
+          #   Resource: '*'
+
+ 
+
+          - Sid: Enable Key Access FOR SA Roles and Grant
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/hq/bu-pw-cldSAAdmin-fed"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/hq/bu-pw-cldarch-fed"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-fed"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-app-qa-ec2"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-app-dev-ec2"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-ecs-tasks-app-dev"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-ecs-tasks-app-qa"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-ecs-tasks-exe-dev"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-ecs-tasks-exe-qa"
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/app/uai2000422/elite-jenkins"
+                - !Sub "arn:aws:iam::988201728534:role/app/uai2000422/elite-jenkins"
+            Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:DescribeKey'
+              - 'kms:CreateGrant'
+              - 'kms:ListGrants'
+              - 'kms:RevokeGrant'
+            Resource: '*'
+
+ 
+
+          # - Sid: Enable Key Access
+          #   Effect: Allow
+          #   Principal:
+          #     AWS: !Ref RoleARNs
+          #   Action:
+          #     - 'kms:Encrypt'
+          #     - 'kms:Decrypt'
+          #     - 'kms:ReEncrypt*'
+          #     - 'kms:GenerateDataKey*'
+          #     - 'kms:DescribeKey'
+          #   Resource: '*'
+
+ 
+
+  KMSAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: !Sub 'alias/${UAI}-${AppName}-${Env}-${Service}'
+      TargetKeyId: !Ref KMSKey
+
+ 
+
+Outputs:
+  KMSID:
+    Value: !Ref KMSKey
+  KMSArn:
+    Value: !GetAtt KMSKey.Arn
+  KMSAlias:
+    Value: !Ref KMSAlias
