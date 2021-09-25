@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  UAI:
+    Type: String
+    Description: The UAI of the application being managed.
+    ConstraintDescription: The UAI must be valid, but specified as 'uai' followed by 7 digits.
+    AllowedPattern: '^uai[0-9]*$'
+    MinLength: 10
+    MaxLength: 10
+    Default: uai2000422
+  Env:
+    Type: String
+    Description: Env instance of the resource.
+    Default: dev
+    AllowedValues:
+    - dev
+    - qa
+    - stg
+    - prd
+  AppName:
+    Type: String
+    MaxLength: 25
+    MinLength: 3
+    Description: Name of the application, keep to 15 characters or less
+    Default: elite
+  TaskName:
+    Type: String
+    Description: Name of the Task Definition
+  TaskRoleArn:
+    Type: String
+    Description: ARN of the Task Role
+    Default: arn:aws:iam::930136447543:role/app/uai2000422/elite-ecs-tasks-app-dev
+  ExecutionRoleArn:
+    Type: String
+    Description: ARN of the Execution Role
+    Default: arn:aws:iam::930136447543:role/app/uai2000422/elite-ecs-tasks-exe-dev
+  ContainerCpu:
+    Type: Number
+    Default: 2048
+    Description: The number of cpu units used by the task. 1024 is 1 CPU
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+  ContainerMemory:
+    Type: Number
+    Default: 4096
+    Description: How much memory in megabytes to give the container
+  ImageURI:
+    Type: String
+    Description: "The image used to start a container.  Ex: repository-url/image"
+    Default: 930136447543.dkr.ecr.us-east-1.amazonaws.com/uai2000422-elite-dev
+  ImageTag:
+    Type: String
+    Description: ECR image tag to use
+  ContainerPort:
+    Type: Number
+    Description: the port number on which application is running in Docker
+  
+
+ 
+
+Resources:
+  ECSTaskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${UAI}/${AppName}/${Env}/${TaskName}"
+      RetentionInDays: 7
+      
+  ECSTaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSTaskLogGroup
+    Properties:
+      Cpu: !Ref "ContainerCpu"
+      Memory: !Ref "ContainerMemory"
+      Family: !Sub "${UAI}-${AppName}-${Env}-${TaskName}"
+      TaskRoleArn: !Ref "TaskRoleArn"
+      NetworkMode: "awsvpc"
+      RequiresCompatibilities:
+        - FARGATE
+      Tags:
+        - Key: uai
+          Value: !Ref UAI
+        - Key: env
+          Value: !Ref Env
+      ExecutionRoleArn: !Ref "ExecutionRoleArn"
+      ContainerDefinitions:
+        - Name: !Ref "TaskName"
+          Essential: true
+          Image: !Sub "${ImageURI}:${ImageTag}"
+          PortMappings:
+            - ContainerPort: !Ref "ContainerPort"
+              Protocol: tcp
+          Environment:
+            - Name: "uai"
+              Value: !Ref UAI
+            - Name: "app"
+              Value: !Ref AppName
+            - Name: "env"
+              Value: !Ref Env
+          Secrets:
+            - Name: DATASOURCE
+              ValueFrom: arn:aws:secretsmanager:us-east-1:930136447543:secret:uai2000422-elite-dev-db-7UkIke
+              
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSTaskLogGroup
+              awslogs-region: !Sub "${AWS::Region}"
+              awslogs-stream-prefix: !Sub "${TaskName}-${ContainerPort}"
+
+ 
+
+Outputs:
+  ECSTaskDefinitionARN:
+    Description: Task Definition ARN
+    Value: !Ref ECSTaskdefinition
+    
+  LogGroupName:
+    Description: Task Log Group Name
+    Value: !Ref ECSTaskLogGroup
