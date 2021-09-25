@@ -1,0 +1,90 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template to create a TG
+Parameters:
+  AppName:
+    Type: String
+    Description: Name of the application. (keep to 15 characters or less, preferably)
+    AllowedPattern: "[a-z0-9\\-]*"
+    MaxLength: 20
+  Env:
+    Type: String
+    Description: Environment of the application
+    Default: dev
+    AllowedValues:
+    - dev
+    - qa
+    - stg
+    - prd
+  UAI:
+    Type: String
+    Description: UAI of the application
+    AllowedPattern: "uai[0-9]*"
+    MinLength: 10
+    MaxLength: 10
+  TrafficPort:
+    Type: Number
+    Description: Instances receive traffic on this port
+  ProtocolToUse:
+    Type: String
+    AllowedValues:
+    - HTTP
+    - HTTPS
+    Default: HTTPS
+    Description: ALB protocol - should be either HTTP or HTTPS.
+  HealthCheckPath:
+    Type: String
+    Description: Path that ALB pings for health check requests. Don't use the / character.
+#   InstancesToUse:
+#     Type: AWS::EC2::Instance::Id
+#     Description: Comma delimited list of instances to attach to target group. No targets added by leaving all values as "N/A".
+#     Default: ''
+  IpsToUse:
+    Type: CommaDelimitedList
+    Description: Ip addresses of instances in a comma delimited list
+    Default: ''
+  HealthCheckCode:
+    Type: String
+    Description: health check codes
+    Default: '200-399'
+  Name:
+    Type: String
+    Description: Provide the Name of the targetgroup
+
+ 
+
+Resources:
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${UAI}-${AppName}-${Env}-${Name}'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: !Sub /${HealthCheckPath}
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: !Ref HealthCheckCode
+      Port: !Ref TrafficPort
+      Protocol: !Ref ProtocolToUse
+      Tags:
+        - Key: associate
+          Value: sa
+        - Key: uai
+          Value: !Ref UAI
+        - Key: app
+          Value: !Ref AppName
+        - Key: env
+          Value: !Ref Env
+      TargetType: ip
+
+ 
+
+      VpcId: !ImportValue vpcid
+
+ 
+
+Outputs:
+  tgarn:
+    Description: Tg arn
+    Value: !Ref TargetGroup
