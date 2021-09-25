@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template to create an ALB listener rule
+Resources:
+  TGListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+      - Type: authenticate-oidc
+        Order: 1
+        AuthenticateOidcConfig:
+          AuthorizationEndpoint: https://fssfed.ge.com/fss/as/authorization.oauth2
+          Issuer: https://fssfed.ge.com/fss
+          TokenEndpoint: https://fssfed.ge.com/fss/as/token.oauth2
+          UserInfoEndpoint: https://fssfed.ge.com/fss/idp/userinfo.openid
+          ClientId: dev-elitenew
+          ClientSecret: 168MMCceI
+          Scope: 'openid profile'
+      - Type: forward
+        Order: 2
+        TargetGroupArn: "arn:aws:elasticloadbalancing:us-east-1:930136447543:targetgroup/uai2000422-elite-dev-absisvc/d3399a4554ba5858"
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - /absi/*
+      ListenerArn: "arn:aws:elasticloadbalancing:us-east-1:930136447543:listener/app/uai2000422-elite-dev-int/a86ab8f31be366d1/de32b0a7cf7194ec"
+      Priority: 15
