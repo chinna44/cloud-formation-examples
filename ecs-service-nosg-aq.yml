@@ -1,0 +1,109 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A stack for provisioning ecs service..
+
+ 
+
+Parameters:
+  AppName:
+    Type: String
+    MaxLength: 25
+    MinLength: 3
+    Description: Name of the application, keep to 15 characters or less
+    Default: elite
+  UAI:
+    Type: String
+    Description: The UAI of the application being managed.
+    ConstraintDescription: The UAI must be valid, but specified as 'uai' followed by 7 digits.
+    AllowedPattern: '^uai[0-9]*$'
+    MinLength: 10
+    MaxLength: 10
+    Default: uai2000422
+  Env:
+    Type: String
+    Description: Env instance of the resource.
+    Default: dev
+    AllowedValues:
+    - dev
+    - qa
+    - stg
+    - prd
+  ContainerPort:
+    Type: Number
+    Description: Provide the Targate group Port, Default is 80.
+    Default: 8452
+  ServiceName:
+    Type: String
+    Description: Service Name
+    Default: aqReport
+  TaskName:
+    Type: String
+    Description: Name of the Task Definition which need to map in targetgroup value should be exactly same from the task defination.
+    Default: aqReport-task
+  ClusterInstance:
+    Description: Please provide the ECS Cluster Instance that this service should run on
+    Type: String
+    Default: fargate
+  TaskDefinitionVersion:
+    Type: Number
+    Default: 2
+    Description: Task Defination Version
+  TargetGroupArn:
+    Type: String
+    Description: Arn of the Target Group
+    Default: "arn:aws:elasticloadbalancing:us-east-1:930136447543:targetgroup/uai2000422-elite-dev-agReport/59d7bb85810b399e"
+  ContainerSecurityGroup:
+    Type: String
+    Description: Security Group ID
+    Default: sg-0d58eb2d189e9febe
+  LoadBalancerSecurityGroup:
+    Type: String
+    Default: sg-0852ee67af6ee7215
+  DiscoveryServiceArn:
+    Type: String
+    Default: "    arn:aws:servicediscovery:us-east-1:930136447543:service/srv-5kom4gngd5db4jxw"
+
+ 
+
+Resources:
+  ALBIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ContainerSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref ContainerPort
+      ToPort: !Ref ContainerPort
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+ 
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+        ServiceName: !Sub "${UAI}-${AppName}-${Env}-${ServiceName}"
+        Cluster: !Sub "${UAI}-${AppName}-${Env}-${ClusterInstance}"
+        TaskDefinition: !Sub "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${UAI}-${AppName}-${Env}-${TaskName}:${TaskDefinitionVersion}"
+        DeploymentConfiguration:
+          MinimumHealthyPercent: 100
+          MaximumPercent: 200
+        DesiredCount: 1
+        PlatformVersion: 1.4.0
+        HealthCheckGracePeriodSeconds: 400
+        LaunchType: FARGATE
+        NetworkConfiguration:
+          AwsvpcConfiguration:
+            AssignPublicIp: DISABLED
+            Subnets: [!ImportValue app-az1, !ImportValue app-az2]
+            SecurityGroups:
+            - !Ref ContainerSecurityGroup
+        LoadBalancers:
+        - ContainerName: !Ref TaskName  # value should be anything or exactly the same from the taskname defined in the Taskdefination
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroupArn
+        ServiceRegistries:
+        - RegistryArn: !Ref DiscoveryServiceArn
+        Tags:
+        - Key: uai
+          Value: uai2000422
+        - Key: associate
+          Value: sa
